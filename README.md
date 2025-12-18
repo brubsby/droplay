@@ -32,6 +32,7 @@ droplay takes a single argument for the file to play:
 ```
 droplay <.dro file>
 ```
+When playing, the audio is simultaneously written to `output.wav` in the current working directory.
 
 ## Additional Information
 - http://www.shikadi.net/moddingwiki/DRO_Format

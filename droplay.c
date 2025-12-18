@@ -31,6 +31,56 @@ const char* HEADER_STRING = "DBRAWOPL";
 static opl3_chip chip;
 static SDL_mutex* chipMutex = NULL;
 static SDL_AudioDeviceID audioDevice;
+static FILE* wav_file = NULL;
+
+struct WavHeader {
+    char riff_tag[4];
+    uint32_t riff_length;
+    char wave_tag[4];
+    char fmt_tag[4];
+    uint32_t fmt_length;
+    uint16_t audio_format;
+    uint16_t num_channels;
+    uint32_t sample_rate;
+    uint32_t byte_rate;
+    uint16_t block_align;
+    uint16_t bits_per_sample;
+    char data_tag[4];
+    uint32_t data_length;
+};
+
+void write_wav_header(FILE* file, int sample_rate, int channels) {
+    struct WavHeader header;
+    memcpy(header.riff_tag, "RIFF", 4);
+    header.riff_length = 0; // Placeholder
+    memcpy(header.wave_tag, "WAVE", 4);
+    memcpy(header.fmt_tag, "fmt ", 4);
+    header.fmt_length = 16;
+    header.audio_format = 1; // PCM
+    header.num_channels = channels;
+    header.sample_rate = sample_rate;
+    header.bits_per_sample = 16;
+    header.byte_rate = sample_rate * channels * (header.bits_per_sample / 8);
+    header.block_align = channels * (header.bits_per_sample / 8);
+    memcpy(header.data_tag, "data", 4);
+    header.data_length = 0; // Placeholder
+
+    fwrite(&header, sizeof(header), 1, file);
+}
+
+void update_wav_header(FILE* file) {
+    uint32_t file_size = ftell(file);
+    uint32_t data_length = file_size - sizeof(struct WavHeader);
+    uint32_t riff_length = file_size - 8;
+
+    fseek(file, 4, SEEK_SET);
+    fwrite(&riff_length, 4, 1, file);
+
+    fseek(file, 40, SEEK_SET);
+    fwrite(&data_length, 4, 1, file);
+
+    fseek(file, 0, SEEK_END);
+}
 
 void WriteReg(int bank, unsigned int reg, unsigned int val)
 {
@@ -43,6 +93,9 @@ void AudioCallback(void* userdata, Uint8* stream, int len)
 {
 	SDL_LockMutex(chipMutex);
 	OPL3_GenerateStream(&chip, (int16_t*)stream, len / 4);
+    if (wav_file) {
+        fwrite(stream, 1, len, wav_file);
+    }
 	SDL_UnlockMutex(chipMutex);
 }
 
@@ -56,7 +109,7 @@ void Init(void)
 
 	chipMutex = SDL_CreateMutex();
 
-	OPL3_Reset(&chip, 49716);
+	OPL3_Reset(&chip, 48000);
 
 	SDL_AudioSpec want, have;
 
@@ -72,6 +125,14 @@ void Init(void)
 		fprintf(stderr, "Unable to open audio device\n");
 		exit(1);
 	}
+
+    wav_file = fopen("output.wav", "wb");
+    if (wav_file) {
+        write_wav_header(wav_file, 48000, 2);
+    } else {
+        fprintf(stderr, "Warning: Could not open output.wav for writing\n");
+    }
+
 	SDL_PauseAudioDevice(audioDevice, 0);
 }
 
@@ -79,6 +140,10 @@ void Exit()
 {
 	SDL_CloseAudioDevice(audioDevice);
 	SDL_DestroyMutex(chipMutex);
+    if (wav_file) {
+        update_wav_header(wav_file);
+        fclose(wav_file);
+    }
 	SDL_Quit();
 }
 

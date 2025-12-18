@@ -1,1 +1,14 @@
-CMakeLists.txt.user
+# Ignore build directories
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Ignore outputs
+*.wav
+*.dro
+
+# Ignore IDE settings
+.vscode/
+.idea/
